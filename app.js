@@ -10,9 +10,10 @@ const server = http.createServer(app);
 const redisClient = redis.createClient();
 const PORT = process.env.PORT || 5000;
 const Message = require('./models/message');
-const Agent = require('./models/agent');
 const mongoose = require("mongoose");
-const agent = require('./models/agent');
+const urgentKeywords = ['urgent', 'asap', 'immediately', 'need cash', 'emergency', 'now', 'fast', 'quick'];
+const moderateKeywords = ['soon', 'quickly', 'please', 'kindly', 'next week', 'tomorrow'];
+
 const agents = new Map(); // Map to track online agents and their socket IDs
 let agentQueue = []; // Circular queue of available agents
 app.use(cors());
@@ -21,6 +22,7 @@ const io = socketIo(server, {
         origin: '*',
     }
 });
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended:  false }));
 app.use(express.json({ limit: "2mb" }), (err, req, res, next) => {
@@ -53,15 +55,7 @@ function getNextAgentId() {
 
      return nextAgentId;
   }
-  // Function to get the socket ID of an agent given their agent ID
-  function socketByAgentId(agentId) {
-    for (const [socketId, id] of agents) {
-      if (id === agentId) {
-        return socketId;
-      }
-    }
-    return null;
-  }
+
   async function assignUnassignedMessages() {
     try {
       // Find all unassigned messages in MongoDB
@@ -76,7 +70,9 @@ function getNextAgentId() {
             message.isAssigned = true;
             message.agentId = nextAgentId;
             await message.save(); // Update the message in the database
-            io.to(socketByAgentId(nextAgentId)).emit('messageAssigned', message);
+              console.log(agents.get(nextAgentId),agents,nextAgentId)
+
+            io.to(agents.get(nextAgentId)).emit('messageAssigned', message);
             console.log(`Assigned message ${message._id} to Agent ${nextAgentId}`);
           }
         }
@@ -127,10 +123,52 @@ app.get('/getMessages/:agentId', async (req, res) => {
     }
     )
 })
+app.post('/response', async (req, res) => {
+
+    const messageId= req.body.messageId;
+    const response = req.body.response;
+    Message.findByIdAndUpdate(messageId, {response:{message:response},isResolved:true}).then((message) => {
+        console.log(message)
+        res.status(200).json({
+            message: "Response sent successfully"
+        })
+    }).catch((err) => {
+        console.log(err)
+        res.status(400).json({
+            error: err
+        })
+    })
+
+
+
+
+})
+function categorizeMessage(message) {
+    const lowerCaseMessage = message.toLowerCase();
+
+    // Check for urgent keywords
+    for (const keyword of urgentKeywords) {
+        if (lowerCaseMessage.includes(keyword)) {
+            return '1';
+        }
+    }
+
+    // Check for moderate keywords
+    for (const keyword of moderateKeywords) {
+        if (lowerCaseMessage.includes(keyword)) {
+            return '2';
+        }
+    }
+
+    // Default to not moderate if no keywords match
+    return '3';
+}
 app.post('/message', async (req, res) => {
+    const priority = categorizeMessage(req.body.message);
     const newMsg = new Message({
         message:req.body.message,
         senderId:req.body.senderId,
+        priority: priority,
     })
     await newMsg.save();
     await assignUnassignedMessages();
