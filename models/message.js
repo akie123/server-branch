@@ -1,4 +1,3 @@
-
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
@@ -11,25 +10,25 @@ const messageSchema = new Schema({
         type: String,
         required: true
     },
-    message:{
+    message: {
         type: String,
         required: true
     },
-    agentId:{
+    agentId: {
         type: String
     },
-    isAssigned:{
+    isAssigned: {
         type: Boolean,
         default: false
     },
-    response:{
+    response: {
         type: new Schema({
             message: {
                 type: String,
             }
         }, {timestamps: true}),
     },
-    isResolved:{
+    isResolved: {
         type: Boolean,
         default: false
     }
